@@ -1,0 +1,6 @@
+{
+  "name": "Cadência — Pomodoro Mobile",
+  "description": "Aplicativo de Pomodoro mobile-first com ciclos de foco, pausas, áudio via Web Audio API, Screen Wake Lock e persistência local.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
