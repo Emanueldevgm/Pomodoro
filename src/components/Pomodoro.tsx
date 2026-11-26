@@ -19,6 +19,7 @@ import {
   ListTodo,
   Clock,
   ChevronRight,
+  Download,
 } from 'lucide-react';
 import Onboarding from './Onboarding';
 import {
@@ -34,6 +35,11 @@ import {
 } from '../types/pomodoro';
 
 type MobileTab = 'timer' | 'tasks';
+
+interface BeforeInstallPromptEvent extends Event {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
+}
 
 const MODE_META: Record<
   TimerMode,
@@ -124,6 +130,12 @@ export default function Pomodoro() {
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   const [wakeLockSupported, setWakeLockSupported] = useState<boolean>(false);
   const [wakeLockActive, setWakeLockActive] = useState<boolean>(false);
+  const [installPromptEvent, setInstallPromptEvent] =
+    useState<BeforeInstallPromptEvent | null>(null);
+  const [isAppInstalled, setIsAppInstalled] = useState<boolean>(false);
+  const [isIOSDevice, setIsIOSDevice] = useState<boolean>(false);
+  const [showInstallHelp, setShowInstallHelp] = useState<boolean>(false);
+  const [installError, setInstallError] = useState<string | null>(null);
 
   const audioCtxRef = useRef<AudioContext | null>(null);
   const wakeLockRef = useRef<WakeLockSentinel | null>(null);
@@ -237,6 +249,37 @@ export default function Pomodoro() {
       metaTheme.setAttribute('content', settings.theme === 'dark' ? '#111514' : '#F4F5F3');
     }
   }, [settings.theme, hydrated]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const isIOS =
+      /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    const isIOSStandalone = (navigator as Navigator & { standalone?: boolean }).standalone;
+    setIsIOSDevice(isIOS);
+    setIsAppInstalled(
+      window.matchMedia('(display-mode: standalone)').matches || isIOSStandalone === true
+    );
+
+    const handleBeforeInstallPrompt = (event: Event) => {
+      event.preventDefault();
+      setInstallPromptEvent(event as BeforeInstallPromptEvent);
+    };
+    const handleAppInstalled = () => {
+      setIsAppInstalled(true);
+      setInstallPromptEvent(null);
+      setShowInstallHelp(false);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    window.addEventListener('appinstalled', handleAppInstalled);
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+      window.removeEventListener('appinstalled', handleAppInstalled);
+    };
+  }, []);
 
   // Hydrate persisted state from localStorage on mount
   useEffect(() => {
@@ -601,6 +644,26 @@ export default function Pomodoro() {
   const handleSelectActiveTask = (taskId: string) => {
     setActiveTaskId(taskId);
     setMobileTab('timer');
+  };
+
+  const handleInstallApp = async () => {
+    setInstallError(null);
+    if (!installPromptEvent) {
+      setShowInstallHelp((current) => !current);
+      return;
+    }
+
+    try {
+      await installPromptEvent.prompt();
+      const choice = await installPromptEvent.userChoice;
+      if (choice.outcome === 'accepted') {
+        setIsAppInstalled(true);
+      }
+      setInstallPromptEvent(null);
+    } catch (error) {
+      console.error('Não foi possível iniciar a instalação do Cadência.', error);
+      setInstallError('Não foi possível abrir a instalação. Tente pelo menu do navegador.');
+    }
   };
 
   // Avoid flashing timer screen before localStorage check completes
@@ -1334,6 +1397,61 @@ export default function Pomodoro() {
                   <span className="w-5 h-5 rounded-full bg-white shadow-xs" />
                 </span>
               </button>
+
+              <section className="rounded-2xl border border-[#DCE0DA] dark:border-[#2B3532] bg-[#F8F9F7] dark:bg-[#151A18] p-4">
+                <div className="flex items-start gap-3">
+                  <span className="w-10 h-10 shrink-0 rounded-xl flex items-center justify-center bg-[#E4ECE7] dark:bg-[#24332D] text-[#2E6F5E] dark:text-[#75B69F]">
+                    <Download className="w-5 h-5" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <h3 className="text-sm font-bold text-[#18201D] dark:text-[#EEF1EF]">
+                      Instale no seu dispositivo
+                    </h3>
+                    <p className="mt-1 text-xs leading-relaxed text-[#5A6862] dark:text-[#98A6A0]">
+                      Use o Cadência como aplicativo no computador ou celular.
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleInstallApp}
+                  disabled={isAppInstalled}
+                  aria-expanded={showInstallHelp}
+                  className="mt-3 w-full min-h-[48px] rounded-xl px-4 text-sm font-semibold flex items-center justify-center gap-2 active:scale-[0.98] transition-transform disabled:opacity-70"
+                  style={{ backgroundColor: focusAccentHex, color: focusTextOnAccent }}
+                >
+                  {isAppInstalled
+                    ? 'Aplicativo já instalado'
+                    : isIOSDevice
+                    ? 'Como instalar no iPhone ou iPad'
+                    : 'Instalar aplicativo'}
+                </button>
+
+                {showInstallHelp && !isAppInstalled && (
+                  <div className="mt-3 rounded-xl bg-white dark:bg-[#191F1D] p-3 text-xs leading-relaxed text-[#52605A] dark:text-[#B5C0BB]">
+                    {isIOSDevice ? (
+                      <ol className="list-decimal space-y-1.5 pl-4">
+                        <li>Abra esta página no Safari.</li>
+                        <li>Toque em Compartilhar (ícone de quadrado com seta para cima).</li>
+                        <li>Escolha “Adicionar à Tela de Início” e toque em “Adicionar”.</li>
+                      </ol>
+                    ) : (
+                      <p>
+                        No Chrome ou Edge, abra o menu do navegador e escolha “Instalar
+                        aplicativo” ou “Adicionar à tela inicial”. Se o ícone de instalação
+                        aparecer na barra de endereço, você também pode usá-lo.
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {installError && (
+                  <p className="mt-2 text-xs text-red-700 dark:text-red-300" role="alert">
+                    {installError}
+                  </p>
+                )}
+              </section>
 
               {/* Bottom Sheet Action Buttons */}
               <div className="pt-1 flex gap-3">
