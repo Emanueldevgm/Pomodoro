@@ -1,4 +1,8 @@
-const CACHE_NAME = 'cadencia-pwa-v1';
+const CACHE_NAME = 'cadencia-pwa-__BUILD_ID__';
+const PRECACHE_ASSETS_JSON = '__PRECACHE_ASSETS_JSON__';
+const PRECACHE_ASSETS = PRECACHE_ASSETS_JSON.startsWith('__')
+  ? []
+  : JSON.parse(PRECACHE_ASSETS_JSON);
 const APP_SHELL = [
   '/',
   '/manifest.webmanifest',
@@ -6,6 +10,7 @@ const APP_SHELL = [
   '/icons/icon-512.png',
   '/icons/icon-512-maskable.png',
   '/icons/apple-touch-icon.png',
+  ...PRECACHE_ASSETS,
 ];
 
 self.addEventListener('install', (event) => {
@@ -45,6 +50,11 @@ self.addEventListener('fetch', (event) => {
       const cache = await caches.open(CACHE_NAME);
 
       if (request.mode === 'navigate') {
+        const cached = await cache.match('/');
+        if (cached) {
+          return cached;
+        }
+
         try {
           const response = await fetch(request);
           if (response.ok) {
